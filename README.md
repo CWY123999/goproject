@@ -1,8 +1,8 @@
 ## Usage:
 
 ```shell
-$ go get -u git.jiaxianghudong.com/go/goproject
-$ cd $GOPATH/src/git.jiaxianghudong.com/go/goproject/cmd/goproject
+$ go get -u github.com/CWY123999/goproject
+$ cd $GOPATH/src/github.com/CWY123999/goproject/cmd/goproject
 $ go install
 
 $ goproject new testproject
@@ -10,12 +10,12 @@ $ goproject new testproject
 
 ## Golang 编码规范
 
-https://git.jiaxianghudong.com/go/goproject/blob/master/standard.md
+https://github.com/CWY123999/goproject/blob/master/standard.md
 
 
 ## Golang 项目 CI 支持说明
 
-https://git.jiaxianghudong.com/go/goproject/-/tree/master/scripts
+https://github.com/CWY123999/goproject/-/tree/master/scripts
 
 ## 关于项目中的Assets
 
