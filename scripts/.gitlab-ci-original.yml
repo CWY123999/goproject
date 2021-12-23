@@ -1,0 +1,106 @@
+image: registry.cn-beijing.aliyuncs.com/jiaxiang/gobuilder2:latest
+
+variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+    CMD:
+        description: "要编译的可执行文件名，即 cmd 下 main.go 所在目录名称。(多个名称可使用半角逗号分隔，all 表示发布所有 cmd 下的执行文件)"
+        value: ""
+    ENV:
+        description: "要发布的环境，即 build 与 configs 下的子目录名称。"
+        value: ""
+    JUMPTEST:
+        description: "是否要跳过代码静态检查和测试 (0|1)"
+        value: "0"
+    USECGO:
+        description: "是否使用 cgo (0|1)"
+        value: "0"
+
+before_script:
+    - date '+%Y-%m-%d %H:%M:%S.%N'
+    - if [ $CMD = "all" ]; then VCMD=$(ls cmd | grep -v / | grep '^[^_]' | xargs echo | sed 's/ /,/g'); fi;
+    - CMD=$(echo $CMD | sed 's/ //g')
+    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@git.jiaxianghudong.com/".insteadOf "https://git.jiaxianghudong.com/"
+    - mkdir -p .go && echo "GOPATH => $GOPATH" && echo "Workdir => `pwd`" && ls -al
+    - GOPROXY=https://goproxy.cn GONOPROXY=git.jiaxianghudong.com GONOSUMDB=git.jiaxianghudong.com GO111MODULE=on go env
+
+.go-cache:
+    cache:
+        paths:
+            - .go/pkg/mod/
+
+stages:
+    - test
+    - build
+    - buildimage
+    - deploy
+
+code_test:
+    stage: test
+    extends: .go-cache
+    script:
+        - go mod download
+        - _="========== golangci-lint run  =========="
+        - make lint
+        - _="========== go test =========="
+        - make test
+        - _="========== go test -race -short =========="
+        - make race
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "web" && $JUMPTEST != "1"'
+
+build:
+    stage: build
+    extends: .go-cache
+    artifacts:
+        paths:
+            - ./*-linux-amd64
+    script:
+        - go mod download
+        - date '+%Y-%m-%d %H:%M:%S.%N'
+        - echo $CMD
+        - arr=(`echo $CMD | sed 's/,/\n/g'`); for cmd in ${arr[*]}; do make release tags=release name=$cmd; done
+        - ls -alh ./*-linux-amd64
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "web" && $CMD != null && $CMD != ""'
+
+# 要实现镜像构建, 请在项目中添加如下文件: 项目根目录/build/环境标识/执行文件名/config.sh
+# 其文件内容为:
+#
+# RegistryHost="registry.cn-beijing.aliyuncs.com"
+# ImageNamespace="test"
+# PortList="8080,8081"
+# DeployDomain="https://k8sapp.jiaxianghudong.com"
+# DeployID="12345678-abcd-efgh-ijkl-ae02319ce195"
+#
+# 参数说明:
+#   RegistryHost (必须) 镜像仓库地址, 多数情况下无需配置, 默认值为 registry.cn-beijing.aliyuncs.com
+#   ImageNamespace (必须) 镜像仓库命名空间名称
+#   PortList (非必须) 服务要暴露的端口, 多个端口以半角逗号分隔
+#   DeployDomain (必须) 部署接口服务域名, 由运维配置提供
+#   DeployID (必须) 部署ID, 由运维配置提供
+build_image:
+    stage: buildimage
+    extends: .go-cache
+    artifacts:
+        paths:
+            - ./*-linux-amd64
+            - ./build.env
+    script:
+        - export
+        - ls -alh ./*-linux-amd64
+        - echo $CMD
+        - arr=(`echo $CMD | sed 's/,/\n/g'`); for cmd in ${arr[*]}; do buildimage ./$cmd-linux-amd64 $CI_COMMIT_REF_NAME $GITLAB_USER_EMAIL $ENV; done
+    dependencies:
+        - build
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "web" && $CMD != null && $CMD != "" && $ENV != null && $ENV != ""'
+
+deploy:
+    stage: deploy
+    script:
+        - cat build.env
+        - deploy $GITLAB_USER_EMAIL $CI_PROJECT_PATH
+    dependencies:
+        - build_image
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "web" && $CMD != null && $CMD != "" && $ENV != null && $ENV != ""'

@@ -1,0 +1,17 @@
+// Copyright (c) #Year#. Homeland Interactive Technology Ltd. All rights reserved.
+
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"#ProjectPath#/internal/pkg/manager"
+)
+
+func main() {
+	if len(os.Args) == 2 && os.Args[1] == "version" {
+		fmt.Println(manager.GetBuildInfo())
+		return
+	}
+}

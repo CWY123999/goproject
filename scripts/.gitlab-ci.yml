@@ -1,0 +1,71 @@
+# 要实现镜像构建, 请在项目中添加如下文件: 项目根目录/build/环境标识/执行文件名/config.sh
+# 其文件内容为:
+#
+# RegistryHost="registry.cn-beijing.aliyuncs.com"
+# ImageNamespace="test"
+# PortList="8080,8081"
+# DeployDomain="https://k8sapp.jiaxianghudong.com"
+# DeployID="12345678-abcd-efgh-ijkl-ae02319ce195"
+#
+# 参数说明:
+#   RegistryHost (必须) 镜像仓库地址, 多数情况下无需配置, 默认值为 registry.cn-beijing.aliyuncs.com
+#   ImageNamespace (必须) 镜像仓库命名空间名称
+#   PortList (非必须) 服务要暴露的端口, 多个端口以半角逗号分隔
+#   DeployDomain (必须) 部署接口服务域名, 由运维配置提供
+#   DeployID (必须) 部署ID, 由运维配置提
+
+image: registry.cn-beijing.aliyuncs.com/jiaxiang/gobuilder2:latest
+
+variables:
+    CLUSTER:
+        description: "要发布的集群，即 build 与 configs 下首层子目录名称。(多个集群使用半角逗号分隔，不支持使用 all 发布所有集群)"
+        value: "default"
+    ENV:
+        description: "要发布的环境，即 build 与 configs 下第二层子目录名称。(多个环境使用半角逗号分隔，不支持使用 all 发布所有环境)"
+        value: ""
+    CMD:
+        description: "要编译的可执行文件名，即 cmd 下 main.go 所在目录名称。(多个名称可使用半角逗号分隔，all 表示发布所有 cmd 下的执行文件)"
+        value: ""
+    JUMPTEST:
+        description: "是否要跳过代码静态检查和测试 (0|1)"
+        value: "0"
+    USECGO:
+        description: "是否使用 cgo (0|1)"
+        value: "0"
+    CMDENV:
+        description: "设置给执行程序的环境变量，可在程序中通过 'GO_CI_ENV' 获取。"
+        value: ""
+
+stages:
+    - setup
+    - triggers
+
+generate_config:
+    stage: setup
+    script:
+        - echo $CLUSTER
+        - echo $ENV
+        - echo $CMD
+        - echo $JUMPTEST
+        - echo $USECGO
+        - echo $CMDENV
+        - curl --header "PRIVATE-TOKEN:gpKth4Rswoh8vh3hsDU2" https://git.jiaxianghudong.com/api/v4/projects/621/repository/files/scripts%2Fgenerate-configs.sh/raw?ref=master > generate-configs.sh
+        - chmod +x generate-configs.sh
+        - ./generate-configs.sh $CLUSTER $ENV $CMD $JUMPTEST $USECGO $CMDENV
+        - cat .gitlab-ci-complete.yml
+    artifacts:
+        expire_in: 20 min
+        paths:
+            - .gitlab-ci-complete.yml
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "web"'
+
+trigger_pipeline:
+    stage: triggers
+    trigger:
+        strategy: depend
+        include:
+            - artifact: .gitlab-ci-complete.yml
+              job: generate_config
+    rules:
+        - if: '$CI_PIPELINE_SOURCE == "web"'

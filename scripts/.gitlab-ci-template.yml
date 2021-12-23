@@ -1,0 +1,115 @@
+image: registry.cn-beijing.aliyuncs.com/jiaxiang/gobuilder2:latest
+
+variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+    VCLUSTER: "{{CLUSTER}}"
+    VENV: "{{ENV}}"
+    VCMD: "{{CMD}}"
+    VJUMPTEST: "{{JUMPTEST}}"
+    VUSECGO: "{{USECGO}}"
+    VCMDENV: "{{CMDENV}}"
+
+before_script:
+    - _=""
+    - _=""
+    - _="=====> before script..."
+    - _=""
+    - _=""
+    - date '+%Y-%m-%d %H:%M:%S.%N'
+    - if [ $VCMD = "all" ]; then VCMD=$(ls cmd | grep -v / | grep '^[^_]' | xargs echo | sed 's/ /,/g'); fi;
+    - VCMD=$(echo $VCMD | sed 's/ //g')
+    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@git.jiaxianghudong.com/".insteadOf "https://git.jiaxianghudong.com/"
+    - mkdir -p .go && echo "GOPATH => $GOPATH" && echo "Workdir => `pwd`" && ls -al
+    - go env -w GOPROXY=https://goproxy.cn
+    - go env -w GONOPROXY=git.jiaxianghudong.com
+    - go env -w GONOSUMDB=git.jiaxianghudong.com
+    - go env -w GO111MODULE=on
+    - if [ "$VUSECGO" = "1" ]; then go env -w CGO_ENABLED=1; else go env -w CGO_ENABLED=0; fi
+    - go env
+
+.go-cache:
+    cache:
+        paths:
+            - .go/pkg/mod/
+
+stages:
+    - code_analysis
+    - build_and_deploy
+
+code_analysis:
+    stage: code_analysis
+    extends: .go-cache
+    script:
+        - _=""
+        - _=""
+        - _="=====> code analysis..."
+        - _=""
+        - _=""
+        - go mod download
+        - _="========== golangci-lint run  =========="
+        - make lint
+        - _="========== go test =========="
+        - make test
+        - _="========== go test -race -short =========="
+        - make race
+    tags:
+        - {{TAGS}}
+    rules:
+        - if: '$VJUMPTEST != "1"'
+
+# 要实现镜像构建, 请在项目中添加如下文件: 项目根目录/build/环境标识/执行文件名/config.sh
+# 其文件内容为:
+#
+# RegistryHost="registry.cn-beijing.aliyuncs.com"
+# ImageNamespace="test"
+# PortList="8080,8081"
+# DeployDomain="https://k8sapp.jiaxianghudong.com"
+# DeployID="12345678-abcd-efgh-ijkl-ae02319ce195"
+#
+# 参数说明:
+#   RegistryHost (必须) 镜像仓库地址, 多数情况下无需配置, 默认值为 registry.cn-beijing.aliyuncs.com
+#   ImageNamespace (必须) 镜像仓库命名空间名称
+#   PortList (非必须) 服务要暴露的端口, 多个端口以半角逗号分隔
+#   DeployDomain (必须) 部署接口服务域名, 由运维配置提供
+#   DeployID (必须) 部署ID, 由运维配置提供
+build_and_deploy:
+    stage: build_and_deploy
+    extends: .go-cache
+    script:
+        - _=""
+        - _=""
+        - _="=====> environment..."
+        - _=""
+        - _=""
+        - date '+%Y-%m-%d %H:%M:%S.%N'
+        - echo $VCLUSTER
+        - echo $VENV
+        - echo $VCMD
+        - echo $VUSECGO
+        - echo $VCMDENV
+        - git branch
+        - _=""
+        - _=""
+        - _="=====> build..."
+        - _=""
+        - _=""
+        - go mod download
+        - arr=(`echo $VCMD | sed 's/,/\n/g'`); for cmd in ${arr[*]}; do make release tags="{{CLUSTER}} {{ENV}}" name=$cmd; done
+        - ls -alh ./*-linux-amd64
+        - _=""
+        - _=""
+        - _="=====> build_image..."
+        - _=""
+        - _=""
+        - arr=(`echo $VCMD | sed 's/,/\n/g'`); for cmd in ${arr[*]}; do buildimage ./$cmd-linux-amd64 $CI_COMMIT_REF_NAME $GITLAB_USER_EMAIL $VCLUSTER $VENV $VCMDENV; done
+        - _=""
+        - _=""
+        - _="=====> deploy..."
+        - _=""
+        - _=""
+        - cat build.env
+        - deploy $GITLAB_USER_EMAIL $CI_PROJECT_PATH
+    tags:
+        - {{TAGS}}
+    rules:
+        - if: '$VCLUSTER != null && $VCLUSTER != "" && $VENV != null && $VENV != "" && $VCMD != null && $VCMD != ""'

@@ -1,0 +1,31 @@
+image: registry.cn-beijing.aliyuncs.com/jiaxiang/gobuilder2:latest
+
+variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+    MCLUSTER: "{{{CLUSTER}}}"
+    MENV: "{{{ENV}}}"
+    MCMD: "{{{CMD}}}"
+    MJUMPTEST: "{{{JUMPTEST}}}"
+    MUSECGO: "{{{USECGO}}}"
+    MCMDENV: "{{{CMDENV}}}"
+
+stages:
+    - setup
+    - triggers
+
+generate_config:
+    stage: setup
+    script:
+        - echo $MCLUSTER
+        - echo $MENV
+        - echo $MCMD
+        - echo $MJUMPTEST
+        - echo $MUSECGO
+        - echo $MCMDENV
+        - curl --header "PRIVATE-TOKEN:gpKth4Rswoh8vh3hsDU2" https://git.jiaxianghudong.com/api/v4/projects/621/repository/files/scripts%2F.gitlab-ci-template.yml/raw?ref=master > .gitlab-ci-template.yml
+        - cat .gitlab-ci-template.yml
+        - carr=(`echo $MCLUSTER | sed 's/,/\n/g'`); for clusterm in ${carr[*]}; do arr=(`echo $MENV | sed 's/,/\n/g'`); for envm in ${arr[*]}; do cat .gitlab-ci-template.yml | sed s/'{{TAGS}}'/$envm/g | sed s/'{{CLUSTER}}'/"$clusterm"/g | sed s/'{{ENV}}'/"$envm"/g | sed s/'{{CMD}}'/"$MCMD"/g | sed s/'{{JUMPTEST}}'/"$MJUMPTEST"/g | sed s/'{{USECGO}}'/"$MUSECGO"/g | sed s/'{{CMDENV}}'/"$MCMDENV"/g > .gitlab-ci-complete-$clusterm-$envm.yml; done; done
+        - tail -n +1 ./.gitlab-ci-complete-*.yml
+    artifacts:
+        paths:
+{{{artifacts}}}
